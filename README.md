@@ -15,4 +15,24 @@ The following techniques have been used:
  - All the above said modelling techniques are tried and evaluated. The final metric used to evaluate is mean squared error.
 
 ## To excute the script
+First setup conda environment using the following command.
+ - conda env create --name envname --file=environments.yml
+ - conda activate <envname>
+Now run the script with this command.
+ - python < scriptname.py >
+
+
+
+## To Execute the Script
+
+### 1. Set Up the Conda Environment
+Run the following commands to set up and activate the environment:
+```bash
+conda env create --name < envname > --file=env.yml
+conda activate < envname >
+```
+Now run the script with this command:
+```bash
 python < scriptname.py >
+```
+
