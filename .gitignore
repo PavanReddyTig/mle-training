@@ -1,5 +1,0 @@
-#Ignore all .pyc files
-*.pyc
-
-#Ignore all CSV files
-*.csv
