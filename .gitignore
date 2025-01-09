@@ -1,0 +1,8 @@
+#Ignore .pyc files
+*.pyc
+
+#ignore .csv files
+*.csv
+
+#Ignore datasets directory
+datasets/
