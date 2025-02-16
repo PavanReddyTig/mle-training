@@ -3,8 +3,11 @@ import logging
 import os
 import tarfile
 
+import mlflow
+import numpy as np
 import pandas as pd
 from six.moves import urllib
+from sklearn.model_selection import StratifiedShuffleSplit
 
 
 def setup_logging(log_level, log_path=None, console_log=True):
@@ -34,14 +37,19 @@ def setup_logging(log_level, log_path=None, console_log=True):
 
 def fetch_housing_data(housing_url, housing_path):
     """
-    Downloads and extracts the housing data.
+    Downloads and extracts the housing data from the specified URL.
 
     Parameters
     ----------
     housing_url : str
-        URL of the housing data.
+        URL of the housing data tar file.
     housing_path : str
-        Directory where the raw data will be saved and extracted.
+        Directory where the raw housing data will be saved and extracted.
+
+    Raises
+    ------
+    Exception
+        If there is an error during downloading or extraction.
     """
     os.makedirs(housing_path, exist_ok=True)
     tgz_path = os.path.join(housing_path, "housing.tgz")
@@ -55,47 +63,70 @@ def fetch_housing_data(housing_url, housing_path):
 
 def split_data(housing_path, output_dir):
     """
-    Splits the dataset into training and validation sets.
+    Splits the housing dataset into training and validation sets using
+    StratifiedShuffleSplit to ensure similar income category distributions.
 
     Parameters
     ----------
     housing_path : str
-        Path to the directory containing the raw housing data.
+        Path to the directory containing the raw housing data file (CSV).
     output_dir : str
-        Directory where the processed data will be saved.
+        Directory where the processed training and validation data will be saved.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the input dataset file is not found.
     """
     csv_path = os.path.join(housing_path, "housing.csv")
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Dataset not found at {csv_path}")
+
     logging.info(f"Reading dataset from {csv_path}...")
     data = pd.read_csv(csv_path)
-    logging.info("Splitting dataset into training and validation sets...")
-    train_set = data.sample(frac=0.8, random_state=42)
-    val_set = data.drop(train_set.index)
+
+    logging.info("Creating income category for stratified sampling...")
+    data["income_cat"] = pd.cut(
+        data["median_income"],
+        bins=[0.0, 1.5, 3.0, 4.5, 6.0, np.inf],
+        labels=[1, 2, 3, 4, 5],
+    )
+
+    logging.info(
+        "Splitting dataset into training and"
+        + "validation sets using StratifiedShuffleSplit..."
+    )
+    strat_split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+    for train_index, val_index in strat_split.split(data, data["income_cat"]):
+        train_set = data.loc[train_index].drop("income_cat", axis=1)
+        val_set = data.loc[val_index].drop("income_cat", axis=1)
+
     os.makedirs(output_dir, exist_ok=True)
     train_set.to_csv(os.path.join(output_dir, "train.csv"), index=False)
     val_set.to_csv(os.path.join(output_dir, "val.csv"), index=False)
     logging.info(f"Training and validation data saved to {output_dir}.")
 
 
-def main():
+def ingest_data_main():
     """
-    Function to define the parser, add arguments and make function calls
+    Main function to parse arguments and execute data ingestion steps.
     """
     parser = argparse.ArgumentParser(description="Ingest and prepare housing data.")
     parser.add_argument(
         "--housing-url",
-        default="https://raw.githubusercontent.com/ageron/handson-ml/master/" +
-        "datasets/housing/housing.tgz",
+        default="https://raw.githubusercontent.com/ageron/handson-ml/master/"
+        + "datasets/housing/housing.tgz",
         help="URL of the housing data (default: Ageron's dataset)",
     )
     parser.add_argument(
         "--housing-path",
         default="data/raw",
-        help="Path to save the raw housing data (default: data/raw)",
+        help="Path to save the raw housing data (default: ../../data/raw)",
     )
     parser.add_argument(
         "--output-dir",
         default="data/processed",
-        help="Path to save the processed datasets (default: data/processed)",
+        help="Path to save the processed datasets (default: ../../data/processed)",
     )
     parser.add_argument(
         "--log-level",
@@ -106,13 +137,14 @@ def main():
     parser.add_argument(
         "--log-path",
         default="logs/ingest_data.log",
-        help="Path to save the log file (default: None)",
+        help="Path to save the log file (default: logs/ingest_data.log)",
     )
     parser.add_argument(
         "--no-console-log",
         action="store_true",
         help="Disable console logging",
     )
+    parser.add_argument("--parent-run-id", default=None, help="Parent MLflow run ID.")
 
     args = parser.parse_args()
 
@@ -128,8 +160,12 @@ def main():
     logging.info("Starting data ingestion process...")
     fetch_housing_data(args.housing_url, args.housing_path)
     split_data(args.housing_path, args.output_dir)
+
+    mlflow.log_param("housing_url", args.housing_url)
+    mlflow.log_param("housing_path", args.housing_path)
+    mlflow.log_param("output_dir", args.output_dir)
     logging.info("Data ingestion and preparation completed successfully.")
 
 
 if __name__ == "__main__":
-    main()
+    ingest_data_main()
